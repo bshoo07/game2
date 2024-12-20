@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>게임</title>
+    <style>
+        canvas {
+            border: 1px solid black;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        let playerSpeed = 5;
+        let score = 0;
+        let isGameOver = false;
+        let playerX = canvas.width / 2;
+        let playerY = canvas.height / 2;
+        let playerDirection = 0; // 플레이어의 방향 (라디안 값)
+
+        // 키 입력 상태
+        let keysPressed = {
+            ArrowRight: false,
+            ArrowLeft: false,
+            ArrowUp: false,
+            ArrowDown: false
+        };
+
+        // 이미지 로드
+        const playerImage = new Image();
+        playerImage.src = 'player.png';
+
+        const pointImage = new Image();
+        pointImage.src = 'point.png';
+
+        const itemImage = new Image();
+        itemImage.src = 'item.png';
+
+        /*const backgroundImage = new Image();
+        backgroundImage.src = 'background.png'; // 배경 이미지 추가*/
+
+        const enemyImages = ['enemy1.png', 'enemy2.png', 'enemy3.png', 'enemy4.png'];
+        const loadedEnemyImages = [];
+        let loadedImageCount = 0;
+
+        enemyImages.forEach((src, index) => {
+            const img = new Image();
+            img.src = src;
+            img.onload = () => {
+                loadedEnemyImages[index] = img;
+                loadedImageCount++;
+                if (loadedImageCount === enemyImages.length) {
+                    initializePointObject();
+                    initializeYellowObject();
+                    addRedEnemy();
+                    gameLoop(); // 모든 이미지 로드 후 게임 루프 시작
+                }
+            };
+        });
+
+        const enemies = [];
+
+        // 초록색 물체
+        let pointObject = { x: 0, y: 0, width: 30, height: 30 };
+
+        // 노란색 물체
+        let yellowObject = { x: 0, y: 0, width: 30, height: 30 };
+
+        function initializePointObject() {
+            pointObject.x = Math.random() * (canvas.width - pointObject.width);
+            pointObject.y = Math.random() * (canvas.height - pointObject.height);
+        }
+
+        function initializeYellowObject() {
+            const x1 = 50 + Math.random() * 50;
+            const x2 = 700 + Math.random() * 50;
+            yellowObject.x = Math.random() > 0.5 ? x1 : x2;
+
+            const y1 = 50 + Math.random() * 50;
+            const y2 = 300 + Math.random() * 50;
+            yellowObject.y = Math.random() > 0.5 ? y1 : y2;
+        }
+
+        function addRedEnemy() {
+            let enemyX, enemyY;
+            do {
+                enemyX = Math.random() * canvas.width;
+                enemyY = Math.random() * canvas.height;
+            } while (
+                enemyX >= playerX - 200 && enemyX <= playerX + 200 &&
+                enemyY >= playerY - 200 && enemyY <= playerY + 200
+            );
+
+            const enemyIndex = enemies.length % loadedEnemyImages.length;
+            enemies.push({
+                x: enemyX,
+                y: enemyY,
+                width: 30,
+                height: 30,
+                image: loadedEnemyImages[enemyIndex],
+                baseSpeed: 4,
+                speedX: 0,
+                speedY: 0,
+                movingLeft: false
+            });
+        }
+
+        /*function drawBackground() {
+            ctx.drawImage(backgroundImage, 0, 0, canvas.width, canvas.height); // 배경 이미지 그리기
+        }*/
+
+        function drawPlayer() {
+            ctx.save();
+            ctx.translate(playerX + 15, playerY + 15); // 중심으로 이동
+            ctx.rotate(playerDirection); // 플레이어 방향에 따라 회전
+            ctx.drawImage(playerImage, -15, -15, 30, 30); // 회전된 상태에서 이미지 그리기
+            ctx.restore();
+        }
+
+        function drawPointObject() {
+            ctx.drawImage(pointImage, pointObject.x, pointObject.y, pointObject.width, pointObject.height);
+        }
+
+        function drawYellowObject() {
+            ctx.drawImage(itemImage, yellowObject.x, yellowObject.y, yellowObject.width, yellowObject.height);
+        }
+
+        function drawEnemies() {
+            enemies.forEach(enemy => {
+                ctx.save();
+                if (enemy.movingLeft) {
+                    ctx.scale(-1, 1);
+                    ctx.drawImage(enemy.image, -enemy.x - enemy.width, enemy.y, enemy.width, enemy.height);
+                } else {
+                    ctx.drawImage(enemy.image, enemy.x, enemy.y, enemy.width, enemy.height);
+                }
+                ctx.restore();
+            });
+        }
+
+        function moveEnemies() {
+            enemies.forEach(enemy => {
+                const dx = playerX - enemy.x;
+                const dy = playerY - enemy.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                const additionalSpeed = score * 0.1;
+                const speed = enemy.baseSpeed + additionalSpeed;
+
+                if (distance > 0) {
+                    enemy.speedX = (dx / distance) * speed;
+                    enemy.speedY = (dy / distance) * speed;
+                }
+
+                enemy.x += enemy.speedX;
+                enemy.y += enemy.speedY;
+
+                if (enemy.x + enemy.width > canvas.width || enemy.x < 0) {
+                    enemy.speedX *= -1;
+                    enemy.movingLeft = !enemy.movingLeft;
+                }
+                if (enemy.y + enemy.height > canvas.height || enemy.y < 0) {
+                    enemy.speedY *= -1;
+                }
+            });
+        }
+
+        function checkCollisions() {
+            const player = { x: playerX, y: playerY, width: 30, height: 30 };
+
+            enemies.forEach(enemy => {
+                if (
+                    player.x < enemy.x + enemy.width &&
+                    player.x + player.width > enemy.x &&
+                    player.y < enemy.y + enemy.height &&
+                    player.y + player.height > enemy.y
+                ) {
+                    isGameOver = true;
+                }
+            });
+
+            if (
+                player.x < pointObject.x + pointObject.width &&
+                player.x + player.width > pointObject.x &&
+                player.y < pointObject.y + pointObject.height &&
+                player.y + player.height > pointObject.y
+            ) {
+                score++;
+                initializePointObject();
+                addRedEnemy();
+            }
+
+            if (
+                player.x < yellowObject.x + yellowObject.width &&
+                player.x + player.width > yellowObject.x &&
+                player.y < yellowObject.y + yellowObject.height &&
+                player.y + player.height > yellowObject.y
+            ) {
+                playerSpeed = 7;
+                initializeYellowObject();
+                setTimeout(() => playerSpeed = 5, 1500);
+            }
+        }
+
+        function movePlayer() {
+            let dx = 0, dy = 0;
+
+            if (keysPressed.ArrowUp) dy -= playerSpeed;
+            if (keysPressed.ArrowDown) dy += playerSpeed;
+            if (keysPressed.ArrowLeft) dx -= playerSpeed;
+            if (keysPressed.ArrowRight) dx += playerSpeed;
+
+            // 대각선 이동 속도 조정
+            if (dx !== 0 && dy !== 0) {
+                dx *= Math.SQRT1_2;
+                dy *= Math.SQRT1_2;
+            }
+
+            playerX += dx;
+            playerY += dy;
+
+            if (dx !== 0 || dy !== 0) {
+                playerDirection = Math.atan2(dy, dx);
+            }
+
+            playerX = Math.max(0, Math.min(canvas.width - 30, playerX));
+            playerY = Math.max(0, Math.min(canvas.height - 30, playerY));
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key in keysPressed) keysPressed[e.key] = true;
+        });
+
+        document.addEventListener('keyup', (e) => {
+            if (e.key in keysPressed) keysPressed[e.key] = false;
+        });
+
+        function gameLoop() {
+            if (isGameOver) {
+                alert('게임 오버! 점수: ' + score);
+                return;
+            }
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            //drawBackground(); // 배경 그리기
+            movePlayer();
+            moveEnemies();
+            checkCollisions();
+            drawPointObject();
+            drawYellowObject();
+            drawEnemies();
+            drawPlayer();
+
+            ctx.font = '30px Arial';
+            ctx.fillStyle = 'black';
+            ctx.fillText('Score: ' + score, 10, 30);
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        // 배경 이미지 로드가 완료되면 게임 루프 시작
+        /*backgroundImage.onload = () => {
+            gameLoop();
+        };*/
+    </script>
+</body>
+</html>
